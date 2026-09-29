@@ -88,7 +88,7 @@ jobs:
         if: matrix.compiler == 'llvm' && matrix.arch == 'aarch64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build libc6-dev-arm64-cross libstdc++-13-dev-arm64-cross libssl-dev
+          sudo apt-get install -y clang lld ninja-build libc6-dev-arm64-cross libstdc++-13-dev-arm64-cross binutils-aarch64-linux-gnu
 
       - name: Install tools (Linux LLVM x86_64)
         if: matrix.compiler == 'llvm' && matrix.arch == 'x86_64'
@@ -189,8 +189,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_SHARED_LIBS=OFF \
             -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake \
-            -DCMAKE_C_FLAGS="-no-integrated-as" \
-            -DCMAKE_CXX_FLAGS="-no-integrated-as" \
+            -DCMAKE_C_FLAGS="-fno-integrated-as --gcc-toolchain=/usr" \
+            -DCMAKE_CXX_FLAGS="-fno-integrated-as --gcc-toolchain=/usr" \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
             -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
 
