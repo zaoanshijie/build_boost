@@ -180,13 +180,19 @@ jobs:
           set(CMAKE_CXX_COMPILER clang++)
           set(CMAKE_C_COMPILER_TARGET aarch64-linux-gnu)
           set(CMAKE_CXX_COMPILER_TARGET aarch64-linux-gnu)
-          set(CMAKE_ASM_FLAGS "-no-integrated-as")
           set(CMAKE_SYSROOT /usr/aarch64-linux-gnu)
           set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
           set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
           set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
           TOOLCHAIN_EOF
-          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+          cmake "$BOOST_SRC" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake \
+            -DCMAKE_C_FLAGS="-no-integrated-as" \
+            -DCMAKE_CXX_FLAGS="-no-integrated-as" \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
 
       - name: Configure (llvm-mingw)
         if: matrix.compiler == 'llvm-mingw'
