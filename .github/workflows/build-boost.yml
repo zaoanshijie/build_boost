@@ -42,14 +42,19 @@ jobs:
     env:
       BOOST_VERSION: ${{ needs.check.outputs.version }}
     steps:
-      - name: Test uses step
-        uses: actions/checkout@v4
-
-      - name: Test run step
+      - name: Test heredoc
         run: |
-          echo "Testing multi-line run"
-          echo "BOOST_VERSION=$BOOST_VERSION"
+          cat > toolchain.cmake << 'TOOLCHAIN_EOF'
+          set(CMAKE_SYSTEM_NAME Linux)
+          set(CMAKE_SYSTEM_PROCESSOR aarch64)
+          set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
+          set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+          TOOLCHAIN_EOF
+          cat toolchain.cmake
 
-      - name: Test if step
-        if: matrix.compiler == 'gcc'
-        run: echo "GCC test passed"
+      - name: Test pwsh
+        if: false
+        run: |
+          Write-Host "Testing pwsh"
+          7z a -tzip -mx9 "test.zip" "some-files\*"
+        shell: pwsh
