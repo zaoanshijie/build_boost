@@ -23,15 +23,8 @@ jobs:
           LATEST=$(curl -sL https://api.github.com/repos/boostorg/boost/releases/latest | jq -r '.tag_name')
           VERSION=${LATEST#boost-}
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          RELEASE_EXISTS=$(curl -sL -o /dev/null -w '%{http_code}' \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST")
-          if [ "$RELEASE_EXISTS" = "200" ]; then
-            echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "Release $LATEST already exists"
-          else
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "New boost version: $VERSION"
-          fi
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
+          echo "Boost version: $VERSION"
 
   build:
     needs: check
@@ -203,50 +196,3 @@ jobs:
         run: |
           tar -cJf "boost-$BOOST_VERSION-${{ matrix.name }}-static.tar.xz" -C boost-install .
         shell: bash
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: boost-${{ env.BOOST_VERSION }}-${{ matrix.name }}-static
-          path: |
-            boost-${{ env.BOOST_VERSION }}-${{ matrix.name }}-static.zip
-            boost-${{ env.BOOST_VERSION }}-${{ matrix.name }}-static.tar.xz
-          if-no-files-found: error
-
-  release:
-    needs: [check, build]
-    if: always() && needs.check.result == 'success' && (needs.check.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: List artifacts
-        run: |
-          echo "Artifacts to release:"
-          ls -la artifacts/
-
-      - name: Create release
-        env:
-          BOOST_VERSION: ${{ needs.check.outputs.version }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="boost-$BOOST_VERSION"
-          gh release create "$TAG" \
-            --title "boost-$BOOST_VERSION" \
-            --notes "Prebuilt static boost $BOOST_VERSION.
-
-          | Platform | Compiler | Architecture |
-          |----------|----------|-------------|
-          | Windows | MSVC | x86_64 |
-          | Windows | llvm-mingw | x86_64 |
-          | Linux | GCC | x86_64 |
-          | Linux | GCC | ARM64 |
-          | Linux | LLVM | x86_64 |
-          | Linux | LLVM | ARM64 |" \
-            artifacts/*
