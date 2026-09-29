@@ -37,60 +37,20 @@ jobs:
 
   build:
     needs: check
-    if: |
-      always() &&
-      needs.check.result == 'success' &&
-      (needs.check.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
+    if: ${{ needs.check.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: windows-msvc-x86_64
-            os: windows-latest
-            compiler: msvc
-            target_arch: x86_64
-            source_ext: zip
-            artifact_ext: zip
-
-          - name: windows-llvm-mingw-x86_64
-            os: ubuntu-latest
-            compiler: llvm-mingw
-            target_arch: x86_64
-            source_ext: tar.xz
-            artifact_ext: tar.xz
-
-          - name: linux-gcc-x86_64
-            os: ubuntu-latest
-            compiler: gcc
-            target_arch: x86_64
-            source_ext: tar.xz
-            artifact_ext: tar.xz
-
-          - name: linux-gcc-arm64
-            os: ubuntu-latest
-            compiler: gcc
-            target_arch: aarch64
-            source_ext: tar.xz
-            artifact_ext: tar.xz
-
-          - name: linux-llvm-x86_64
-            os: ubuntu-latest
-            compiler: llvm
-            target_arch: x86_64
-            source_ext: tar.xz
-            artifact_ext: tar.xz
-
-          - name: linux-llvm-arm64
-            os: ubuntu-latest
-            compiler: llvm
-            target_arch: aarch64
-            source_ext: tar.xz
-            artifact_ext: tar.xz
-
+          - { name: windows-msvc-x86_64, os: windows-latest, compiler: msvc, arch: x86_64, ext: zip }
+          - { name: windows-llvm-mingw-x86_64, os: ubuntu-latest, compiler: llvm-mingw, arch: x86_64, ext: tar_xz }
+          - { name: linux-gcc-x86_64, os: ubuntu-latest, compiler: gcc, arch: x86_64, ext: tar_xz }
+          - { name: linux-gcc-arm64, os: ubuntu-latest, compiler: gcc, arch: aarch64, ext: tar_xz }
+          - { name: linux-llvm-x86_64, os: ubuntu-latest, compiler: llvm, arch: x86_64, ext: tar_xz }
+          - { name: linux-llvm-arm64, os: ubuntu-latest, compiler: llvm, arch: aarch64, ext: tar_xz }
     runs-on: ${{ matrix.os }}
     env:
       BOOST_VERSION: ${{ needs.check.outputs.version }}
-
     steps:
       - name: Setup MSVC (Windows)
         if: matrix.compiler == 'msvc'
@@ -99,7 +59,7 @@ jobs:
           arch: amd64
 
       - name: Install GCC ARM cross-compiler
-        if: matrix.compiler == 'gcc' && matrix.target_arch == 'aarch64'
+        if: matrix.compiler == 'gcc' && matrix.arch == 'aarch64'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
@@ -108,7 +68,13 @@ jobs:
         if: matrix.compiler == 'llvm'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang
+          sudo apt-get install -y clang ninja-build
+
+      - name: Install Ninja (Linux)
+        if: matrix.compiler == 'gcc'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
 
       - name: Setup llvm-mingw
         if: matrix.compiler == 'llvm-mingw'
@@ -119,62 +85,47 @@ jobs:
           tar xf llvm-mingw.tar.xz
           echo "$PWD/llvm-mingw-${LLVM_MINGW_VER}-msvcrt-ubuntu-20.04-x86_64/bin" >> "$GITHUB_PATH"
 
-      - name: Download boost source
+      - name: Download boost source (Windows)
+        if: matrix.os == 'windows-latest'
         run: |
-          if [ "${{ matrix.source_ext }}" = "zip" ]; then
-            curl -sL -o boost-src.zip \
-              "https://github.com/boostorg/boost/releases/download/boost-$BOOST_VERSION/boost-$BOOST_VERSION-cmake.zip"
-            unzip -q boost-src.zip
-          else
-            curl -sL -o boost-src.tar.xz \
-              "https://github.com/boostorg/boost/releases/download/boost-$BOOST_VERSION/boost-$BOOST_VERSION-cmake.tar.xz"
-            tar xf boost-src.tar.xz
-          fi
-          echo "BOOST_SRC=$PWD/boost-$BOOST_VERSION" >> "$GITHUB_ENV"
-        shell: bash
+          curl -sL -o boost-src.zip "https://github.com/boostorg/boost/releases/download/boost-${env:BOOST_VERSION}/boost-${env:BOOST_VERSION}-cmake.zip"
+          unzip -q boost-src.zip
+          echo "BOOST_SRC=${PWD}/boost-${env:BOOST_VERSION}" >> $env:GITHUB_ENV
+        shell: pwsh
 
-      - name: Prepare build dir
-        run: mkdir boost-build
-        shell: bash
+      - name: Download boost source (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          curl -sL -o boost-src.tar.xz "https://github.com/boostorg/boost/releases/download/boost-$BOOST_VERSION/boost-$BOOST_VERSION-cmake.tar.xz"
+          tar xf boost-src.tar.xz
+          echo "BOOST_SRC=$PWD/boost-$BOOST_VERSION" >> "$GITHUB_ENV"
 
       - name: Configure (MSVC)
         if: matrix.compiler == 'msvc'
-        working-directory: boost-build
         run: |
-          cmake "$BOOST_SRC" \
-            -G "Visual Studio 17 2022" -A x64 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+          mkdir -p boost-build
+          cd boost-build
+          cmake "$BOOST_SRC" -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
         shell: bash
 
-      - name: Configure (Linux native: gcc x86_64 / llvm x86_64)
-        if: |
-          matrix.os == 'ubuntu-latest' &&
-          matrix.target_arch == 'x86_64' &&
-          matrix.compiler != 'llvm-mingw'
-        working-directory: boost-build
+      - name: Configure (Linux native: gcc/llvm x86_64)
+        if: matrix.os == 'ubuntu-latest' && matrix.arch == 'x86_64' && matrix.compiler != 'llvm-mingw'
         run: |
+          mkdir -p boost-build
+          cd boost-build
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
-            CC=gcc CXX=g++ cmake "$BOOST_SRC" \
-              -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_SHARED_LIBS=OFF \
-              -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+            CC=gcc CXX=g++ cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
           else
-            CC=clang CXX=clang++ cmake "$BOOST_SRC" \
-              -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_SHARED_LIBS=OFF \
-              -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+            CC=clang CXX=clang++ cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
           fi
         shell: bash
 
-      - name: Configure (GCC ARM64 cross-compile)
-        if: matrix.compiler == 'gcc' && matrix.target_arch == 'aarch64'
-        working-directory: boost-build
+      - name: Configure (GCC ARM64)
+        if: matrix.compiler == 'gcc' && matrix.arch == 'aarch64'
         run: |
-          cat > toolchain.cmake << 'EOF'
+          mkdir -p boost-build
+          cd boost-build
+          cat > toolchain.cmake << 'TOOLCHAIN_EOF'
           set(CMAKE_SYSTEM_NAME Linux)
           set(CMAKE_SYSTEM_PROCESSOR aarch64)
           set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
@@ -182,36 +133,24 @@ jobs:
           set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
           set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
           set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-          EOF
-
-          cmake "$BOOST_SRC" \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake \
-            -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+          TOOLCHAIN_EOF
+          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
         shell: bash
 
-      - name: Configure (LLVM ARM64 cross-compile)
-        if: matrix.compiler == 'llvm' && matrix.target_arch == 'aarch64'
-        working-directory: boost-build
+      - name: Configure (LLVM ARM64)
+        if: matrix.compiler == 'llvm' && matrix.arch == 'aarch64'
         run: |
-          cmake "$BOOST_SRC" \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_C_COMPILER=clang \
-            -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_C_COMPILER_TARGET=aarch64-linux-gnu \
-            -DCMAKE_CXX_COMPILER_TARGET=aarch64-linux-gnu \
-            -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+          mkdir -p boost-build
+          cd boost-build
+          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER_TARGET=aarch64-linux-gnu -DCMAKE_CXX_COMPILER_TARGET=aarch64-linux-gnu -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
         shell: bash
 
       - name: Configure (llvm-mingw)
         if: matrix.compiler == 'llvm-mingw'
-        working-directory: boost-build
         run: |
-          cat > toolchain.cmake << 'EOF'
+          mkdir -p boost-build
+          cd boost-build
+          cat > toolchain.cmake << 'TOOLCHAIN_EOF'
           set(CMAKE_SYSTEM_NAME Windows)
           set(CMAKE_SYSTEM_PROCESSOR x86_64)
           set(CMAKE_C_COMPILER x86_64-w64-mingw32-clang)
@@ -220,34 +159,22 @@ jobs:
           set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
           set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
           set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-          EOF
-
-          cmake "$BOOST_SRC" \
-            -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake \
-            -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+          TOOLCHAIN_EOF
+          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
         shell: bash
 
       - name: Build
-        working-directory: boost-build
-        run: cmake --build . --config Release --parallel
+        run: cmake --build boost-build --config Release --parallel $(nproc 2>/dev/null || echo 4)
         shell: bash
-        env:
-          CMAKE_BUILD_PARALLEL_LEVEL: ${{ runner.os == 'Windows' && 'max($env:NUMBER_OF_PROCESSORS - 1, 1)' || '$(nproc)' }}
 
       - name: Install
-        working-directory: boost-build
-        run: cmake --install . --config Release
+        run: cmake --install boost-build --config Release --prefix boost-install
         shell: bash
 
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          7z a -tzip -mx9 `
-            "boost-$env:BOOST_VERSION-${{ matrix.name }}-static.zip" `
-            "boost-install\*"
+          7z a -tzip -mx9 "boost-${{ env.BOOST_VERSION }}-${{ matrix.name }}-static.zip" boost-install\*
         shell: pwsh
 
       - name: Package (Linux)
@@ -259,7 +186,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: boost-${{ env.BOOST_VERSION }}-${{ matrix.name }}-static
+          name: ${{ format('boost-{0}-{1}-static', env.BOOST_VERSION, matrix.name) }}
           path: |
             boost-${{ env.BOOST_VERSION }}-${{ matrix.name }}-static.zip
             boost-${{ env.BOOST_VERSION }}-${{ matrix.name }}-static.tar.xz
@@ -267,14 +194,10 @@ jobs:
 
   release:
     needs: [check, build]
-    if: |
-      always() &&
-      needs.check.result == 'success' &&
-      (needs.check.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
+    if: ${{ always() && needs.check.result == 'success' && (needs.check.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -287,13 +210,12 @@ jobs:
           echo "Artifacts to release:"
           ls -la artifacts/
 
-      - name: Create release and upload assets
+      - name: Create release and upload
         env:
           BOOST_VERSION: ${{ needs.check.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="boost-$BOOST_VERSION"
-
           gh release create "$TAG" \
             --title "boost-$BOOST_VERSION" \
             --notes "Prebuilt static boost $BOOST_VERSION libraries.
