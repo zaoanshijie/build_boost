@@ -7,6 +7,9 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+permissions:
+  contents: write
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -20,5 +23,55 @@ jobs:
           LATEST=$(curl -sL https://api.github.com/repos/boostorg/boost/releases/latest | jq -r '.tag_name')
           VERSION=${LATEST#boost-}
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "should_build=true" >> "$GITHUB_OUTPUT"
-          echo "Boost version: $VERSION"
+          RELEASE_EXISTS=$(curl -sL -o /dev/null -w '%{http_code}' \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$LATEST")
+          if [ "$RELEASE_EXISTS" = "200" ]; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "Release $LATEST already exists, skipping build"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "New boost version: $VERSION, will build"
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-msvc-x86_64
+            os: windows-latest
+            compiler: msvc
+            arch: x86_64
+            ext: zip
+          - name: windows-llvm-mingw-x86_64
+            os: ubuntu-latest
+            compiler: llvm-mingw
+            arch: x86_64
+            ext: tar.xz
+          - name: linux-gcc-x86_64
+            os: ubuntu-latest
+            compiler: gcc
+            arch: x86_64
+            ext: tar.xz
+          - name: linux-gcc-arm64
+            os: ubuntu-latest
+            compiler: gcc
+            arch: aarch64
+            ext: tar.xz
+          - name: linux-llvm-x86_64
+            os: ubuntu-latest
+            compiler: llvm
+            arch: x86_64
+            ext: tar.xz
+          - name: linux-llvm-arm64
+            os: ubuntu-latest
+            compiler: llvm
+            arch: aarch64
+            ext: tar.xz
+    runs-on: ${{ matrix.os }}
+    env:
+      BOOST_VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - run: echo "Building boost $BOOST_VERSION for ${{ matrix.name }}"
