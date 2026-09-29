@@ -63,6 +63,11 @@ jobs:
             compiler: llvm
             arch: x86_64
             ext: tar.xz
+          - name: linux-llvm-arm64
+            os: ubuntu-latest
+            compiler: llvm
+            arch: aarch64
+            ext: tar.xz
     runs-on: ${{ matrix.os }}
     env:
       BOOST_VERSION: ${{ needs.check.outputs.version }}
@@ -83,7 +88,7 @@ jobs:
         if: matrix.compiler == 'llvm' && matrix.arch == 'aarch64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang ninja-build libc6-dev-arm64-cross libstdc++-13-dev-arm64-cross
+          sudo apt-get install -y clang lld ninja-build libc6-dev-arm64-cross libstdc++-13-dev-arm64-cross
 
       - name: Install tools (Linux LLVM x86_64)
         if: matrix.compiler == 'llvm' && matrix.arch == 'x86_64'
@@ -168,7 +173,7 @@ jobs:
         run: |
           mkdir -p boost-build
           cd boost-build
-          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER_TARGET=aarch64-linux-gnu -DCMAKE_CXX_COMPILER_TARGET=aarch64-linux-gnu -DCMAKE_CXX_FLAGS="--gcc-toolchain=/usr" -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER_TARGET=aarch64-linux-gnu -DCMAKE_CXX_COMPILER_TARGET=aarch64-linux-gnu -DCMAKE_C_FLAGS="--sysroot=/usr/aarch64-linux-gnu" -DCMAKE_CXX_FLAGS="--sysroot=/usr/aarch64-linux-gnu" -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
 
       - name: Configure (llvm-mingw)
         if: matrix.compiler == 'llvm-mingw'
@@ -248,5 +253,6 @@ jobs:
           | Windows | llvm-mingw | x86_64 |
           | Linux | GCC | x86_64 |
           | Linux | GCC | ARM64 |
-          | Linux | LLVM | x86_64 |" \
+          | Linux | LLVM | x86_64 |
+          | Linux | LLVM | ARM64 |" \
             artifacts/*
