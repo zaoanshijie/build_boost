@@ -88,7 +88,7 @@ jobs:
         if: matrix.compiler == 'llvm' && matrix.arch == 'aarch64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build libc6-dev-arm64-cross libstdc++-13-dev-arm64-cross
+          sudo apt-get install -y clang lld ninja-build libc6-dev-arm64-cross libstdc++-13-dev-arm64-cross libssl-dev
 
       - name: Install tools (Linux LLVM x86_64)
         if: matrix.compiler == 'llvm' && matrix.arch == 'x86_64'
@@ -173,7 +173,19 @@ jobs:
         run: |
           mkdir -p boost-build
           cd boost-build
-          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER_TARGET=aarch64-linux-gnu -DCMAKE_CXX_COMPILER_TARGET=aarch64-linux-gnu -DCMAKE_C_FLAGS="--sysroot=/usr/aarch64-linux-gnu" -DCMAKE_CXX_FLAGS="--sysroot=/usr/aarch64-linux-gnu" -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS="-fuse-ld=lld" -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+          cat > toolchain.cmake << 'TOOLCHAIN_EOF'
+          set(CMAKE_SYSTEM_NAME Linux)
+          set(CMAKE_SYSTEM_PROCESSOR aarch64)
+          set(CMAKE_C_COMPILER clang)
+          set(CMAKE_CXX_COMPILER clang++)
+          set(CMAKE_C_COMPILER_TARGET aarch64-linux-gnu)
+          set(CMAKE_CXX_COMPILER_TARGET aarch64-linux-gnu)
+          set(CMAKE_SYSROOT /usr/aarch64-linux-gnu)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          TOOLCHAIN_EOF
+          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
 
       - name: Configure (llvm-mingw)
         if: matrix.compiler == 'llvm-mingw'
