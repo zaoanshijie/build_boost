@@ -136,10 +136,11 @@ jobs:
       - name: Configure (MSVC)
         if: matrix.compiler == 'msvc'
         run: |
-          mkdir -p boost-build
-          cd boost-build
-          cmake "$BOOST_SRC" -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
-        shell: bash
+          New-Item -ItemType Directory -Force -Path boost-build | Out-Null
+          Set-Location boost-build
+          cmake $env:BOOST_SRC -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF "-DCMAKE_INSTALL_PREFIX=../boost-install"
+          Set-Location ..
+        shell: pwsh
 
       - name: Configure (Linux native)
         if: matrix.os == 'ubuntu-latest' && matrix.arch == 'x86_64' && matrix.compiler != 'llvm-mingw'
@@ -191,7 +192,7 @@ jobs:
           set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
           set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
           TOOLCHAIN_EOF
-          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
+          cmake "$BOOST_SRC" -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_CXX_FLAGS="-D_WIN32_WINNT=0x0A00" -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake -DCMAKE_INSTALL_PREFIX="$PWD/../boost-install"
 
       - name: Build
         run: cmake --build boost-build --config Release --parallel
